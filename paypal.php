@@ -542,8 +542,8 @@ class Paypal extends CI_Model {
 		 }
 		return $nvpArray;
 	}
-	/**
-	 *
+	/**	getAccessToken($asObject=FALSE, $asArray=FALSE)
+	 *	
 	 */
 	public function getAccessToken($asObject=FALSE, $asArray=FALSE) {
 		$acc = $this->getPayPalAccOAuth();
@@ -575,6 +575,7 @@ class Paypal extends CI_Model {
 				$errNo = curl_errno($curl);
 				$errMsg = curl_error($curl);
 				$curlInfo = curl_getinfo($curl);
+				curl_close($curl);
 				$arrErr = array(
 					'ERROR',
 					'SEARCH' => "cURL Error($errNo) $errMsg",
@@ -609,12 +610,74 @@ class Paypal extends CI_Model {
 					return $jsonResponse->access_token;
 				}
 			}
-			curl_close($curl);
-			
 		}
-		
 		return NULL;
 	}
 	
+	/**	makePostCall($url, $data)
+	 *	
+	 */
+	public function makeOAuthCall($url, $data, $asObject=FALSE, $asArray=TRUE) {
+		$token = $this->getAccessToken();
+		$httpHeader = array(
+			"Authorization: Bearer $token",
+			'Accept: application/json',
+			'Content-Type: application/json'
+		);
+		
+		//if (is_array($data)) $data = http_build_query($data);
+		
+		$curl = curl_init();
+		
+		curl_setopt($curl, CURLOPT_URL, $url);
+		curl_setopt($curl, CURLOPT_HEADER, FALSE);
+		curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, FALSE);
+		curl_setopt($curl, CURLOPT_POST, TRUE);
+		curl_setopt($curl, CURLOPT_RETURNTRANSFER, TRUE);
+		curl_setopt($curl, CURLOPT_POSTFIELDS, $data);
+		curl_setopt($curl, CURLOPT_HTTPHEADER, $httpHeader);
+		
+		$response = curl_exec($curl);
+		
+		if (empty($response)) {
+			$errNo = curl_errno($curl);
+			$errMsg = curl_error($curl);
+			$curlInfo = curl_getinfo($curl);
+			curl_close($curl);
+			$arrErr = array(
+				'ERROR',
+				'SEARCH' => "cURL Error($errNo) $errMsg",
+				'ERROR_NO' => $errNo,
+				'ERROR_MSG' => $errMsg,
+				'URL' => $url,
+				'POSTFIELDS' => $data,
+				'CURL_INFO' => $curlInfo,
+			);
+			if ($this->debug) preDump($arrErr);
+			die($arrErr['SEARCH']);
+		}
+		else {
+			$info = curl_getinfo($curl);
+			curl_close($curl);
+			
+			if($info['http_code'] != 200 && $info['http_code'] != 201 ) {
+				$dieResponse = "Received error: ".$info['http_code']."\n<br />\n";
+				$dieResponse .= "Raw response:".$response."\n<br />\n";
+				die($dieResponse);
+			}
+			else {
+				$jsonResponse = json_decode($response);
+				$jsonResponse->total_time = ($info['total_time']*1000)."ms";
+				$araResponse = array();
+				if (!empty($asObject)) return $asObject;
+				if (!empty($asArray)) {
+					foreach ($jsonResponse as $k => $v) $araResponse[$k] = $v;
+					return $araResponse;
+				}
+				return $jsonResponse;
+			}
+		}
+		return NULL;
+	}
 	
 }
