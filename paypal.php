@@ -11,15 +11,18 @@ class Paypal extends CI_Model {
 	function __construct() {
 		parent::__construct();
 		
+		//	These should be set in application/config/constants.php
 		if (defined('PAYPAL_ENDPOINT_CLASSIC') && defined('PAYPAL_USER_CLASSIC') && defined('PAYPAL_PASS_CLASSIC') && defined('PAYPAL_SIGNATURE_CLASSIC'))
 			$this->setPayPalAccClassic(array( 'ENDPOINT' => PAYPAL_ENDPOINT_CLASSIC, 'USER' => PAYPAL_USER_CLASSIC, 'PASS' => PAYPAL_PASS_CLASSIC, 'SIGNATURE' => PAYPAL_SIGNATURE_CLASSIC ));
 		
+		//	These should be set in application/config/constants.php
 		if (defined('PAYPAL_ENDPOINT') && defined('PAYPAL_CLIENT_ID') && defined('PAYPAL_SECRET'))
 			$this->setPayPalAccOAuth(array( 'ENDPOINT' => PAYPAL_ENDPOINT, 'CLIENT_ID' => PAYPAL_CLIENT_ID, 'SECRET' => PAYPAL_SECRET ));
 		
-		$this->setCurrencyCode('usd');
-		$this->setRefundSource('default');
-		$this->setRefundType('full');
+		//	Default property settings
+		//$this->setCurrencyCode('usd');
+		//$this->setRefundSource('default');
+		//$this->setRefundType('full');
 	}
 	
 	/*	ACC INFO: CLASSIC	*/
@@ -32,8 +35,7 @@ class Paypal extends CI_Model {
 	public function getPayPalAccClassic() {
 		if (!empty($this->acc['classic'])) {
 			$acc = $this->acc['classic'];
-			if (!empty($acc['ENDPOINT']) && !empty($acc['USER']) && !empty($acc['PASS']) && !empty($acc['SIGNATURE']))
-				return $acc;
+			if (!empty($acc['ENDPOINT']) && !empty($acc['USER']) && !empty($acc['PASS']) && !empty($acc['SIGNATURE'])) return $acc;
 		}
 		return NULL;
 	}
@@ -105,8 +107,7 @@ class Paypal extends CI_Model {
 	public function getPayPalAccOAuth() {
 		if (!empty($this->acc['oauth'])) {
 			$acc = $this->acc['oauth'];
-			if (!empty($acc['ENDPOINT']) && !empty($acc['CLIENT_ID']) && !empty($acc['SECRET']))
-				return $acc;
+			if (!empty($acc['ENDPOINT']) && !empty($acc['CLIENT_ID']) && !empty($acc['SECRET'])) return $acc;
 		}
 		return NULL;
 	}
@@ -216,7 +217,7 @@ class Paypal extends CI_Model {
 	 *	@return (MIXED) Return the property value, if set, else NULL.
 	 */
 	private function setArrayProperty(&$prop, $array, $value) {
-		$index = array_search(strtolower($value), array_map('strtolower', $array));
+		$index = array_search(strtolower(trim($value)), array_map('strtolower', $array));
 		return $prop = $index !== FALSE ? $array[$index] : NULL;
 	}
 	
@@ -259,9 +260,17 @@ class Paypal extends CI_Model {
 		return $this->getProperty('amt');
 	}
 	public function setAmt($value) {
-		$c = $this->getCurrencyCode();
-		$v = (float)$value;
-		$this->setProperty('amt', !empty($c) && !in_array($c, $this->currencyCodeNoDecimal) ? number_format($v, 2) : number_format($v));
+		if (is_numeric($value) || is_string($value)) {
+			$c = $this->getCurrencyCode();
+			$v = floatval($value);
+			$amt = !empty($c) && !in_array($c, $this->currencyCodeNoDecimal) ? number_format($v, 2) : number_format($v);
+			if ((float)$amt > 0) return $this->setProperty('amt', $amt);
+			show_error("AMT value must be greater than 0.");
+		}
+		show_error("AMT value must be numeric.");
+	}
+	public function amt($value) {
+		$this->setAmt($value);
 		return $this;
 	}
 	
@@ -286,8 +295,55 @@ class Paypal extends CI_Model {
 		return !empty($cc) ? $cc : 'USD';
 	}
 	public function setCurrencyCode($type) {
-		$cc = $this->setArrayProperty($this->currencyCode, $this->currencyCodeTypes, $type);
-		if (!empty($cc)) $this->setProperty('currencycode', 'USD');
+		if (is_string($type) && strlen($type) == 3) {
+			$cc = $this->setArrayProperty($this->currencyCode, $this->currencyCodeTypes, $type);
+			if (!empty($cc)) return $this->setProperty('currencycode', $cc);
+			show_error("Did not recognize [$type] as a valid Currency Code.");
+		}
+		show_error("Currency Code must be a 3 letter STRING.");
+	}
+	public function currencyCode($type) {
+		$this->setCurrencyCode($type);
+		return $this;
+	}
+	
+	/**	$intent
+	 *
+	 */
+	private $intent;
+	protected $intentTypes = array( 'authorize', 'order', 'sale' );
+	public function getIntent() {
+		return $this->getProperty('intent');
+	}
+	public function setIntent($value) {
+		if (is_string($type)) {
+			$type = $this->setArrayProperty($this->intent, $this->intentTypes, $type);
+			if (!empty($type)) return $type;
+			show_error("Did not recognize [$value] as a valid Intent Type.<br /><b>Valid Intent Types</b> are ( <i>" . implode(", ", $this->intentTypes) . "</i> )");
+		}
+		show_error("Intent Type must be a STRING");
+	}
+	public function intent($value) {
+		$this->setAmt($value);
+		return $this;
+	}
+	
+	private $itemAmt;
+	public function getItemAmt() {
+		return $this->getProperty('itemAmt');
+	}
+	public function setItemAmt($value) {
+		if (is_numeric($value) || is_string($value)) {
+			$c = $this->getCurrencyCode();
+			$v = floatval($value);
+			$amt = !empty($c) && !in_array($c, $this->currencyCodeNoDecimal) ? number_format($v, 2) : number_format($v);
+			if ((float)$amt > 0) return $this->setProperty('itemAmt', $amt);
+			show_error("ITEMAMT value must be equal to or greater than 0.");
+		}
+		show_error("ITEMAMT value must be numeric.");
+	}
+	public function itemAmt($value) {
+		$this->setItemAmt($value);
 		return $this;
 	}
 	
@@ -299,16 +355,26 @@ class Paypal extends CI_Model {
 	 *	@method (STRING) setMethod() Sets the PayPal method to be called. Default NULL.
 	 */
 	private $method;
-	protected $methodTypes = array( 'DoDirectPayment', 'RefundTransaction' );
+	protected $methodTypesExpress = array( 'AddressVerify', 'BAUpdate', 'BillOutstandingAmount', 'Callback', 'CreateBillingAgreement', 'CreateRecurringPaymentsProfile', 'DoAuthorization', 'DoCapture', 'DoExpressCheckoutPayment', 'DoReauthorization', 'DoReferenceTransaction', 'DoVoid', 'GetBalance', 'GetBillingAgreementCustomerDetails', 'GetExpressCheckoutDetails', 'GetPalDetails', 'GetRecurringPaymentsProfileDetails', 'GetTransactionDetails', 'ManageRecurringPaymentsProfileStatus', 'RefundTransaction', 'SetCustomerBillingAgreement', 'SetExpressCheckout', 'TransactionSearch', 'UpdateAuthorization', 'UpdateRecurringPaymentsProfile' );
+	protected $methodTypesPro = array( 'BillOutstandingAmount', 'CreateRecurringPaymentsProfile', 'DoCapture', 'DoDirectPayment', 'DoNonReferencedCredit', 'DoReauthorization', 'DoReferenceTransaction', 'DoVoid', 'GetBalance', 'GetRecurringPaymentsProfileDetails', 'GetTransactionDetails', 'ManagePendingTransactionStatus', 'ManageRecurringPaymentsProfileStatus', 'RefundTransaction', 'TransactionSearch', 'UpdateAuthorization', 'UpdateRecurringPaymentsProfile' );
 	public function getMethod() {
 		return $this->getProperty('method');
 	}
 	public function setMethod($type) {
-		$this->setArrayProperty($this->method, $this->methodTypes, $type);
+		if (is_string($type)) {
+			$method = $this->setArrayProperty($this->method, $this->methodTypesExpress, $type);
+			if (empty($method)) $method = $this->setArrayProperty($this->method, $this->methodTypesPro, $type);
+			if (!empty($method)) return $method;
+			show_error("Did not recognize [$type] as a valid API Method.<br /><b>Valid Express Methods</b> are ( <i>" . implode(", ", $this->methodTypesExpress) . "</i> )<br /><b>Valid Pro Methods</b> are ( <i>" . implode(", ", $this->methodTypesPro) . "</i> )");
+		}
+		show_error("API Method must be a STRING of a Valid PayPal API Method.<br /><b>Valid Express Methods</b> are ( <i>" . implode(", ", $this->methodTypesExpress) . "</i> )<br /><b>Valid Pro Methods</b> are ( <i>" . implode(", ", $this->methodTypesPro) . "</i> )");
+	}
+	public function method($type) {
+		$this->setMethod($type);
 		return $this;
 	}
 	
-	/**	$msgSubID
+	/**	$msgSubID	v92.0
 	 *
 	 *	(Optional) A message ID used for idempotence to uniquely identify a message.
 	 *		This ID can later be used to request the latest results for a previous request
@@ -323,7 +389,11 @@ class Paypal extends CI_Model {
 		return $this->getProperty('msgsubid');
 	}
 	public function setMsgSubID($value) {
-		$this->setProperty('msgsubid', $value);
+		if (is_string($value)) return $this->setProperty('msgsubid', $value);
+		show_error("<i>(Optional)</i>MSGSUBID must be a STRING value.");
+	}
+	public function msgSubID($value) {
+		$this->setMsgSubID($value);
 		return $this;
 	}
 	
@@ -340,7 +410,67 @@ class Paypal extends CI_Model {
 		return $this->getProperty('note');
 	}
 	public function setNote($value) {
-		$this->setProperty('note', $value);
+		if (is_string($value)) return $this->setProperty('note', $value);
+		show_error("<i>(Optional)</i>NOTE must be a STRING value.");
+	}
+	public function note($value) {
+		$this->setNote($value);
+		return $this;
+	}
+	
+	/**	$paymentAction
+	 *
+	 */
+	private $paymentAction;
+	protected $paymentActionTypes = array( 'Authorization', 'Order', 'Sale' );
+	public function getPaymentAction() {
+		return $this->getProperty('paymentAction');
+	}
+	public function setPaymentAction($value) {
+		if (is_string($value)) {
+			$type = $this->setArrayProperty($this->paymentAction, $this->paymentActionTypes, $value);
+			if (!empty($type)) return $type;
+			show_error("Did not recognize [$value] as a valid Payment Action.<br /><b>Valid Payment Actions</b> are ( <i>" . implode(", ", $this->paymentActionTypes) . "</i> )");
+		}
+		show_error("Payment Method must be a STRING");
+	}
+	public function paymentAction($value) {
+		$this->setPaymentAction($value);
+		return $this;
+	}
+	
+	/**	$paymentMethod
+	 *
+	 */
+	private $paymentMethod;
+	protected $paymentMethodTypes = array( 'credit_card ', 'paypal' );
+	public function getPaymentMethod() {
+		return $this->getProperty('paymentMethod');
+	}
+	public function setPaymentMethod($value) {
+		if (is_string($type)) {
+			$type = $this->setArrayProperty($this->paymentMethod, $this->paymentMethodTypes, $type);
+			if (!empty($type)) return $type;
+			show_error("Did not recognize [$value] as a valid Payment Method.<br /><b>Valid Intent Methods</b> are ( <i>" . implode(", ", $this->methodTypesExpress) . "</i> )");
+		}
+		show_error("Payment Method must be a STRING");
+	}
+	public function paymentMethod($value) {
+		$this->setAmt($value);
+		return $this;
+	}
+	
+	private $referenceID;
+	public function getReferenceID() {	
+		return $this->getProperty('referenceid');
+	}
+	public function setReferenceID($value) {
+		if (is_numeric($value)) $value = (string)$value;
+		if (is_string($value)) return $this->setProperty('referenceid', $value);
+		show_error("TAXAMT value must be STRING or NUMERIC.");
+	}
+	public function referenceID($value) {
+		$this->setReferenceID($value);
 		return $this;
 	}
 	
@@ -360,10 +490,11 @@ class Paypal extends CI_Model {
 		return $ra == 'true' ? $ra : 'false';
 	}
 	public function setRefundAdvice($value) {
-		if (is_string($value)) $value = strtolower($value) == 'true' ? 'true' : 'false';
-		elseif (is_bool($value)) $value = !empty($value) ? 'true' : 'false';
-		else $value = 'false';
-		$this->setProperty('refundadvice', $value);
+		if (is_bool($value)) return $this->setProperty('refundadvice', $value);
+		show_error("<i>(Optional)</i>REFUNDADVICE must be a BOOLEAN value.");
+	}
+	public function refundAdvice($value) {
+		$this->setRefundAdvice($value);
 		return $this;
 	}
 	
@@ -388,8 +519,15 @@ class Paypal extends CI_Model {
 		return !empty($rs) ? $rs : 'default';
 	}
 	public function setRefundSource($type) {
-		$rs = $this->setArrayProperty($this->refundSource, $this->refundSourceTypes, $type);
-		if (empty($rs)) $rs = $this->setArrayProperty($this->refundSource, $this->refundSourceTypes, 'default');
+		if (is_string($type)) {
+			$rs = $this->setArrayProperty($this->refundSource, $this->refundSourceTypes, $type);
+			if (!empty($rs)) return $rs;
+			show_error("[$type] was not recognized as a valid REFUNDSOURCE.<br><b>Valid Refund Sources Types</b> are ( <i>" . implode(", ", $this->refundSourceTypes) . "</i> )");
+		}
+		show_error("<i>(Optional)</i>REFUNDSOURCE must be a STRING value.");
+	}
+	public function refundSource($type) {
+		$this->setRefundSource($type);
 		return $this;
 	}
 	
@@ -411,8 +549,15 @@ class Paypal extends CI_Model {
 		return !empty($rs) ? $rs : 'Full';
 	}
 	public function setRefundType($type) {
-		$rs = $this->setArrayProperty($this->refundType, $this->refundTypeTypes, $type);
-		if (empty($rs)) $rs = $this->setArrayProperty($this->refundType, $this->refundTypeTypes, 'Full');
+		if (is_string($type)) {
+			$rs = $this->setArrayProperty($this->refundType, $this->refundTypeTypes, $type);
+			if (!empty($rs)) return $rs;
+			show_error("[$type] was not recognized as a valid REFUNDTYPE.<br><b>Valid Refund Types</b> are ( <i>" . implode(", ", $this->refundTypeTypes) . "</i> )");
+		}
+		show_error("REFUNDTYPE must be a STRING value.");
+	}
+	public function refundType($type) {
+		$this->setRefundType($type);
 		return $this;
 	}
 	
@@ -429,7 +574,11 @@ class Paypal extends CI_Model {
 		return $this->getProperty('retryuntil');
 	}
 	public function setRetryUntil($value) {
-		$this->setProperty('retryuntil', $value);
+		if (is_string($value) && preg_match('/[0-9]{4}-[0-9]{2}-[0-9]{2}(T|\s){1}[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|\s){1}/', $value)) return $this->setProperty('retryuntil', $value);
+		show_error('RETRYUNTIL must be a valid STRING value matching the following date format: gmdate("Y-m-d\TH:i:s\Z")');
+	}
+	public function retryUntil($value) {
+		$this->setRetryUntil($value);
 		return $this;
 	}
 	
@@ -445,9 +594,18 @@ class Paypal extends CI_Model {
 		return $this->getProperty('shippingamt');
 	}
 	public function setShippingAmt($value) {
-		$c = $this->getCurrencyCode();
-		$v = (float)$value;
-		return $this->setProperty('shippingamt', !empty($c) && !in_array($c, $this->currencyCodeNoDecimal) ? number_format($v, 2) : number_format($v));
+		if (is_numeric($value) || is_string($value)) {
+			$c = $this->getCurrencyCode();
+			$v = floatval($value);
+			$amt = !empty($c) && !in_array($c, $this->currencyCodeNoDecimal) ? number_format($v, 2) : number_format($v);
+			if ((float)$amt >= 0) return $this->setProperty('shippingamt', $amt);
+			show_error("SHIPPINGAMT value must be 0 or greater.");
+		}
+		show_error("SHIPPINGAMT value must be numeric.");
+	}
+	public function shippingAmt($value) {
+		$this->setShippingAmt($value);
+		return $this;
 	}
 	
 	/**	$taxAmt
@@ -462,9 +620,17 @@ class Paypal extends CI_Model {
 		return $this->getProperty('taxamt');
 	}
 	public function setTaxAmt($value) {
-		$c = $this->getCurrencyCode();
-		$v = (float)$value;
-		$this->setProperty('taxamt', !empty($c) && !in_array($c, $this->currencyCodeNoDecimal) ? number_format($v, 2) : number_format($v));
+		if (is_numeric($value) || is_string($value)) {
+			$c = $this->getCurrencyCode();
+			$v = floatval($value);
+			$amt = !empty($c) && !in_array($c, $this->currencyCodeNoDecimal) ? number_format($v, 2) : number_format($v);
+			if ((float)$amt >= 0) return $this->setProperty('taxamt', $amt);
+			show_error("TAXAMT value must be 0 or greater.");
+		}
+		show_error("TAXAMT value must be NUMERIC.");
+	}
+	public function taxAmt($value) {
+		$this->setTaxAmt($value);
 		return $this;
 	}
 	
@@ -482,25 +648,34 @@ class Paypal extends CI_Model {
 	 *	@method (STRING) setTransactionID() Sets value of transactionID. Default NULL.
 	 */
 	private $transactionID;
-	public function getTransactionID() {
+	public function getTransactionID() {	
 		return $this->getProperty('transactionid');
 	}
 	public function setTransactionID($value) {
-		$this->setProperty('transactionid', $value);
+		if (is_numeric($value)) $value = (string)$value;
+		if (is_string($value)) return $this->setProperty('transactionid', $value);
+		show_error("TAXAMT value must be STRING or NUMERIC.");
+	}
+	public function transactionID($value) {
+		$this->setTransactionID($value);
 		return $this;
 	}
 	
 	/**	$version
 	 *
-	 *	@method (STRING) getPayPalVer() Returns String value of currently set version. Default 1.
-	 *	@method (STRING) setPayPalVer() Sets value of version. Default 1.
+	 *	@method (STRING) getScopeVersion() Returns String value of currently set version. Default 1.
+	 *	@method (STRING) setScopeVersion() Sets value of version. Default 1.
 	 */
-	private $version = 1;
-	public function getPayPalVer() {
-		return $this->getProperty('version');
+	private $scopeVersion = NULL;	//	will default to 1
+	public function getScopeVersion() {
+		return $this->getProperty('scopeVersion');
 	}
-	public function setPayPalVer($value=1) {
-		$this->setProperty('version', !empty($value) ? $value : 1);
+	public function setScopeVersion($value=1) {
+		if (is_numeric($value)) return $this->setProperty('scopeVersion', !empty($value) ? $value : 1);
+		show_error("PayPal Scope Version value must be NUMERIC. Default is 1");
+	}
+	public function scopeVersion($value) {
+		$this->setScopeVersion($value);
 		return $this;
 	}
 	/*-----------------------------------------------*/
@@ -524,7 +699,25 @@ class Paypal extends CI_Model {
 	
 	/*-----------------------------------------------*/
 	
+	/*	QUICK CURL CALLS	*/
+	
+	public function referenceTransaction() {
+		$this->method('doReferenceTransaction')->paymentAction('sale');
+		if (empty($this->currencyCode)) $this->setCurrencyCode('usd');
+		return $this->callClassic();
+	}
+	
+	public function refundTransaction() {
+		$this->method('refundtransaction')->refundType('partial');
+		return $this->callClassic();
+	}
+	
+	/*-----------------------------------------------*/
+	
+	
+	
 	/*	PayPal CURL Calls	*/
+	
 	private function deformatNVP($nvpstr) {
 		$intial = 0; $nvpArray = array();
 		while(strlen($nvpstr)) {
@@ -542,32 +735,42 @@ class Paypal extends CI_Model {
 		 }
 		return $nvpArray;
 	}
-	/**	getAccessToken($asObject=FALSE, $asArray=FALSE)
-	 *	
-	 */
-	public function getAccessToken($asObject=FALSE, $asArray=FALSE) {
-		$acc = $this->getPayPalAccOAuth();
+	
+	public function callClassic() {
+		$acc = $this->getPayPalAccClassic();
 		
 		if (!empty($acc)) {
 			$ep = $acc['ENDPOINT'];
-			$clientID = $acc['CLIENT_ID'];
-			$secret = $acc['SECRET'];
+			$user = $acc['USER'];
+			$pass = $acc['PASS'];
+			$sig = $acc['SIGNATURE'];
 			
-			$ver = $this->getPayPalVer();
+			$curl = curl_init($ep);
 			
-			$url = "$ep/v$ver/oauth2/token";
-			$userPwd = "$clientID:$secret";
-			$postData = array( 'grant_type' => 'client_credentials' );
-			
-			$curl = curl_init();
-			
-			curl_setopt($curl, CURLOPT_URL, $url);
-			curl_setopt($curl, CURLOPT_HEADER, FALSE);
+			curl_setopt($curl, CURLOPT_VERBOSE, TRUE);
 			curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, FALSE);
-			curl_setopt($curl, CURLOPT_POST, TRUE);
+			curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, FALSE);
 			curl_setopt($curl, CURLOPT_RETURNTRANSFER, TRUE);
-			curl_setopt($curl, CURLOPT_USERPWD, $userPwd);
-			curl_setopt($curl, CURLOPT_POSTFIELDS, http_build_query($postData));
+			curl_setopt($curl, CURLOPT_POST, TRUE);
+			
+			$post = array(
+				'VERSION' => 64,
+				'PWD' => $pass,
+				'USER' => $user,
+				'SIGNATURE' => $sig
+			);
+			
+			$ref = new ReflectionClass('paypal');
+			$props = $ref->getProperties(ReflectionProperty::IS_PRIVATE);
+			$opts = array();
+			foreach($props as $prop) {
+				$name = strtoupper($prop->name);
+				$value = $this->getProperty($name);
+				if (!preg_match('/^acc|debug$/i', $name) && !empty($value)) $opts[$name] = $value;
+			}
+			
+			$opts = array_merge($post, $opts);
+			curl_setopt($curl, CURLOPT_POSTFIELDS, http_build_query($opts));
 			
 			$response = curl_exec($curl);
 			
@@ -583,7 +786,94 @@ class Paypal extends CI_Model {
 					'ERROR_MSG' => $errMsg,
 					'URL' => $url,
 					'USERPWD' => $userPwd,
-					'POSTFIELDS' => http_build_query($postData),
+					'POSTFIELDS' => $postData,
+					'CURL_INFO' => $curlInfo,
+				);
+				return $arrErr;
+			}
+			else {
+				$this->resetClassic();
+				$results = $this->deformatNVP($response);
+				$info = curl_getinfo($curl);
+				curl_close($curl);
+				
+				if($info['http_code'] != 200 && $info['http_code'] != 201 ) {
+					$dieResponse = "Received error: ".$info['http_code']."\n<br />\n";
+					$dieResponse .= "Raw response:".$response."\n<br />\n";
+					die($dieResponse);
+				}
+				elseif(!empty($results['ACK'])) {
+					if ($results['ACK'] == 'Success') return $results;
+					else return $results + $opts;
+				}
+			}
+		}
+		return NULL;
+	}
+	private function resetClassic() {
+		$ref = new ReflectionClass('paypal');
+		$props = $ref->getProperties(ReflectionProperty::IS_PRIVATE);
+		foreach($props as $prop) {
+			$name = strtoupper($prop->name);
+			$value = $this->getProperty($name);
+			if (!preg_match('/^acc|debug$/i', $name) && !empty($value)) $this->setProperty($name, NULL);
+		}
+	}
+	
+	//	TODO: Finish building to use OAuth Rest API
+	public function getOAuth($method, $postData=NULL, $asObject=FALSE, $asArray=FALSE) {
+		$acc = $this->getPayPalAccOAuth();
+		if (!empty($acc)) {
+			$ep = $acc['ENDPOINT'];
+			$clientID = $acc['CLIENT_ID'];
+			$secret = $acc['SECRET'];
+			
+			$ver = $this->getScopeVersion();
+			
+			$url = "$ep/v$ver/oauth2/$method";
+			$userPwd = "$clientID:$secret";
+			
+			$curl = curl_init($url);
+			
+			if ($method == 'token') {
+				$httpHeader = array(
+					'Accept: application/json',
+					'Accept-Language: en_US'
+				);
+				$postData = http_build_query(array( 'grant_type' => 'client_credentials' ));
+				curl_setopt($curl, CURLOPT_USERPWD, $userPwd);
+			}
+			else {
+				$token = $this->getOAuth('token');
+				$httpHeader = array(
+					"Authorization: Bearer $token",
+					'Accept: application/json',
+					'Content-Type: application/json'
+				);
+			}
+			
+			curl_setopt($curl, CURLOPT_HEADER, FALSE);
+			curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, FALSE);
+			curl_setopt($curl, CURLOPT_POST, TRUE);
+			curl_setopt($curl, CURLOPT_RETURNTRANSFER, TRUE);
+			curl_setopt($curl, CURLOPT_POSTFIELDS, $postData);
+			curl_setopt($curl, CURLOPT_HTTPHEADER, $httpHeader);
+			
+			$response = curl_exec($curl);
+			
+			if (empty($response)) {
+				$errNo = curl_errno($curl);
+				$errMsg = curl_error($curl);
+				$curlInfo = curl_getinfo($curl);
+				curl_close($curl);
+				$arrErr = array(
+					'ERROR',
+					'SEARCH' => "cURL Error($errNo) $errMsg",
+					'ERROR_NO' => $errNo,
+					'ERROR_MSG' => $errMsg,
+					'URL' => $url,
+					'USERPWD' => $userPwd,
+					'POSTFIELDS' => $postData,
 					'CURL_INFO' => $curlInfo,
 				);
 				if ($this->debug) preDump($arrErr);
@@ -611,73 +901,5 @@ class Paypal extends CI_Model {
 				}
 			}
 		}
-		return NULL;
 	}
-	
-	/**	makePostCall($url, $data)
-	 *	
-	 */
-	public function makeOAuthCall($url, $data, $asObject=FALSE, $asArray=TRUE) {
-		$token = $this->getAccessToken();
-		$httpHeader = array(
-			"Authorization: Bearer $token",
-			'Accept: application/json',
-			'Content-Type: application/json'
-		);
-		
-		//if (is_array($data)) $data = http_build_query($data);
-		
-		$curl = curl_init();
-		
-		curl_setopt($curl, CURLOPT_URL, $url);
-		curl_setopt($curl, CURLOPT_HEADER, FALSE);
-		curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, FALSE);
-		curl_setopt($curl, CURLOPT_POST, TRUE);
-		curl_setopt($curl, CURLOPT_RETURNTRANSFER, TRUE);
-		curl_setopt($curl, CURLOPT_POSTFIELDS, $data);
-		curl_setopt($curl, CURLOPT_HTTPHEADER, $httpHeader);
-		
-		$response = curl_exec($curl);
-		
-		if (empty($response)) {
-			$errNo = curl_errno($curl);
-			$errMsg = curl_error($curl);
-			$curlInfo = curl_getinfo($curl);
-			curl_close($curl);
-			$arrErr = array(
-				'ERROR',
-				'SEARCH' => "cURL Error($errNo) $errMsg",
-				'ERROR_NO' => $errNo,
-				'ERROR_MSG' => $errMsg,
-				'URL' => $url,
-				'POSTFIELDS' => $data,
-				'CURL_INFO' => $curlInfo,
-			);
-			if ($this->debug) preDump($arrErr);
-			die($arrErr['SEARCH']);
-		}
-		else {
-			$info = curl_getinfo($curl);
-			curl_close($curl);
-			
-			if($info['http_code'] != 200 && $info['http_code'] != 201 ) {
-				$dieResponse = "Received error: ".$info['http_code']."\n<br />\n";
-				$dieResponse .= "Raw response:".$response."\n<br />\n";
-				die($dieResponse);
-			}
-			else {
-				$jsonResponse = json_decode($response);
-				$jsonResponse->total_time = ($info['total_time']*1000)."ms";
-				$araResponse = array();
-				if (!empty($asObject)) return $asObject;
-				if (!empty($asArray)) {
-					foreach ($jsonResponse as $k => $v) $araResponse[$k] = $v;
-					return $araResponse;
-				}
-				return $jsonResponse;
-			}
-		}
-		return NULL;
-	}
-	
 }
